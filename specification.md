@@ -1,358 +1,207 @@
-# A22 DSL Specification
+# A22 Language Specification v0.1
 
-## 1. A22 Overview
-A22 is a declarative domain-specific language (DSL) for defining, orchestrating, and deploying agentic systems. It allows architects to define agents, tools, memories, and their interactions as a static, deterministic configuration.
+## 1. Introduction
+A22 is a declarative, agent-native language for defining agentic systems. It separates the **definition** of agent behavior from its **execution**, ensuring portability, determinism, and a clear mental model for builders.
 
-A22 treats agent systems as **Acyclic Directed Graphs (ADGs)** of execution steps, where data flows between nodes (agents, tools, routers) based on events and state. It is designed to be the "Terraform for Agents"—providing a clear, readable, and version-controllable representation of complex AI behaviors.
+## 2. Core Concepts
 
-## 2. Design Principles
-1.  **Declarative over Imperative**: Define *what* the system looks like, not *how* to construct it step-by-step.
-2.  **Explicit Dependencies**: All relationships between agents and tools must be explicit. No hidden side channels.
-3.  **Deterministic Configuration**: The same A22 file should always yield the same system graph structure.
-4.  **Minimalism**: Only essential primitives (`agent`, `tool`, `event`, `route`, `memory`). No "magic" or hidden behaviors.
-5.  **Composition**: Systems are built from reusable modules and blocks.
-6.  **Type Safety**: Inputs and outputs are typed to ensure graph validity at compile time.
+### 2.1 Capability vs Resource Model
+A22 distinguishes between **Capabilities** (what an agent *can do*) and **Resources** (what an agent *has access to*).
 
-## 3. Language Syntax & Grammar (EBNF)
-The syntax is inspired by HCL (HashiCorp Configuration Language) but simplified.
+*   **Capabilities (Tools)**: Immutable, stateless functions or skills.
+    *   *Example*: `web_search`, `calculator`, `send_email`.
+    *   Defined once, reused across agents.
+*   **Resources (Memory/State)**: Mutable, stateful entities.
+    *   *Example*: `conversation_history`, `user_profile_db`, `file_system`.
+    *   Agents read from and write to resources.
+*   **Agents**: The actors that bind capabilities and resources to a model and a directive (system prompt).
+
+### 2.2 Execution Graph (ADG)
+An A22 system compiles down to an **Acyclic Directed Graph (ADG)**.
+*   **Nodes**: Agents, Routers, Tools.
+*   **Edges**: Event flows (Message passing).
+*   **Execution**:
+    1.  **Trigger**: An event enters the graph.
+    2.  **Flow**: Data flows through routes to agents.
+    3.  **Step**: An agent executes (Model + Tools + Memory).
+    4.  **Output**: Result flows to the next node or final output.
+
+## 3. Syntax & Grammar
+
+A22 uses a HCL-like syntax optimized for readability.
 
 ```ebnf
-configuration = { block } ;
-
-block         = identifier , [ string_literal ] , "{" , { attribute | block } , "}" ;
-
-attribute     = identifier , "=" , expression ;
-
-expression    = literal
-              | variable_ref
-              | list
-              | map
-              | function_call ;
-
-literal       = string_literal | number_literal | boolean_literal ;
-string_literal= '"' , { character } , '"' ;
-variable_ref  = "${" , identifier , { "." , identifier } , "}" ;
-
-list          = "[" , [ expression , { "," , expression } ] , "]" ;
-map           = "{" , [ identifier , "=" , expression , { newline , identifier , "=" , expression } ] , "}" ;
+config      = { block }
+block       = type identifier [ label ] "{" body "}"
+body        = { attribute | block }
+attribute   = key "=" expression
+expression  = literal | reference | list | map | call
 ```
 
-## 4. Lexical Structure
--   **Comments**: `#` for single line, `//` for single line.
--   **Strings**: Double-quoted `"string"`. Multi-line strings using heredoc syntax `<<EOF ... EOF` are supported.
--   **Identifiers**: Alphanumeric, underscores, hyphens. Must start with a letter.
--   **Case Sensitivity**: Identifiers are case-sensitive.
--   **Whitespace**: Ignored, except for separation of tokens. No significant indentation.
+### 3.1 Blocks
+Top-level structures that define system components.
+*   `agent`: Defines an actor.
+*   `tool`: Defines a capability.
+*   `resource`: Defines a stateful backend (Memory).
+*   `input` / `output`: Defines the interface.
+*   `router`: Defines control flow logic.
 
-## 5. Core Blocks
-The language is built around these primary top-level blocks:
--   `agent`: Defines an autonomous actor.
--   `tool`: Defines an executable capability.
--   `event`: Defines a signal schema.
--   `route`: Defines logic for directing flow.
--   `memory`: Defines storage persistence.
--   `graph`: Defines the execution flow and wiring.
--   `var`: Defines input variables.
--   `module`: Instantiates a reusable A22 module.
+### 3.2 Types
+*   `string`: "hello"
+*   `number`: 42, 3.14
+*   `bool`: true, false
+*   `list`: ["a", "b"]
+*   `map`: { key = "val" }
+*   `ref`: agent.name, tool.search
 
-## 6. Agent Block Specification
-Agents are the primary nodes. They consume inputs (messages, events) and produce outputs (actions, responses).
+## 4. Block Definitions
 
-```hcl
-agent "researcher" {
-  model       = "gpt-4-turbo"
-  temperature = 0.2
-  system_prompt = "You are a senior research analyst."
+### 4.1 Tool (Capability)
+Defines a functional capability.
 
-  # Tools this agent has access to
-  tools = [
-    tool.web_search,
-    tool.summarizer
-  ]
-
-  # Memory scope
-  memory = memory.short_term_context
-
-  inputs {
-    query = string
-  }
-
-  outputs {
-    report = string
-  }
-}
-```
-
-## 7. Tool Block Specification
-Tools are deterministic functions exposed to agents.
-
-```hcl
+```a22
 tool "web_search" {
-  description = "Search the web for information."
+  description = "Search the internet for up-to-date information"
   
-  # Implementation reference (e.g., path to TS/Python file or API endpoint)
-  source = "./tools/search.ts" 
+  # Implementation reference (URI or path)
+  source = "std/web_search"
 
   inputs {
     query = string
-    limit = number
   }
-
   outputs {
     results = list(string)
   }
 }
 ```
 
-## 8. Event & Route Specification
-Events trigger execution. Routes decide where events go.
+### 4.2 Resource (Memory)
+Defines a storage backend.
 
-```hcl
-event "user_message" {
-  schema = {
-    text = string
-    user_id = string
-  }
-}
-
-route "triage" {
-  input = event.user_message
-
-  # Logic block - simple conditional routing
-  step "classify" {
-    # Inline reasoning or simple logic
-    condition = contains(input.text, "help")
-    target    = agent.support_bot
-  }
-
-  default = agent.general_chat
+```a22
+resource "chat_history" {
+  type = "vector_store"
+  provider = "pinecone" # or "local", "postgres"
+  ttl = "24h"
 }
 ```
 
-## 9. Memory & State Specification
-Memory defines how state is persisted and retrieved.
+### 4.3 Agent
+Binds Model, Tools, and Resources.
 
-```hcl
-memory "conversation_history" {
-  type = "vector_store" # or "key_value", "ephemeral"
-  ttl  = "1h"
+```a22
+agent "researcher" {
+  model = "gpt-4-turbo"
   
-  config = {
-    provider = "pinecone"
-    index    = "main-index"
+  system_prompt = <<EOF
+    You are a researcher. Use the web_search tool to find information.
+    Always cite your sources.
+  EOF
+
+  # Capabilities
+  use "web_search" {
+    tool = tool.web_search
+  }
+
+  # Resources
+  memory "short_term" {
+    resource = resource.chat_history
+    mode = "read_write"
   }
 }
 ```
 
-## 10. Graph & Execution Model (ADG)
-The `graph` block explicitly wires components together if not implied by direct references. It defines the "main" entry point.
+### 4.4 Router (Control Flow)
+Directs traffic based on logic.
 
-```hcl
-graph "main" {
-  start = route.triage
+```a22
+router "triage" {
+  entry = true # Entry point of the graph
 
-  # Explicit edges can be defined if needed for visualization or complex flows
-  # edge route.triage -> agent.support_bot
-  # edge route.triage -> agent.general_chat
-}
-```
+  route {
+    if = contains(input.text, "help")
+    to = agent.support
+  }
 
-**Execution Semantics**:
-1.  **Trigger**: An external input triggers an `event`.
-2.  **Flow**: The event flows through `routes` or directly to an `agent`.
-3.  **Step**: An `agent` processes the input, potentially calling `tools`.
-4.  **State**: `memory` is read/written during steps.
-5.  **Output**: The graph produces a final output or emits a new `event`.
-
-## 11. Variable System & Interpolation
-Variables allow parameterization of configurations.
-
-```hcl
-var "api_key" {
-  type    = string
-  default = "env:OPENAI_API_KEY"
-  sensitive = true
-}
-
-agent "writer" {
-  # ...
-  env = {
-    API_KEY = "${var.api_key}"
+  route {
+    default = true
+    to = agent.researcher
   }
 }
 ```
 
-**Interpolation**: `${type.name.attribute}` syntax is used to reference values from other blocks.
+## 5. Semantics
 
-## 12. Module System
-Modules allow grouping resources into reusable components.
+### 5.1 Scoping & Visibility
+*   Global Scope: All top-level blocks are visible to each other.
+*   Agent Scope: Tools and Resources defined/linked inside an agent are only accessible to that agent.
 
-```hcl
-module "customer_support" {
-  source = "./modules/support-team"
-  
-  # Pass variables to module
-  tier_level = "premium"
-}
-```
+### 5.2 Determinism
+*   **Static Graph**: The structure of the graph (nodes and edges) is constant at compile time.
+*   **Dynamic Execution**: The path taken *through* the graph depends on runtime data, but the *possible* paths are fixed.
 
-## 13. AST Design
-The Abstract Syntax Tree (AST) should represent the configuration as a structured object graph.
+## 6. AST Structure
 
-**Node Types**:
--   `Program`: Root node.
--   `Block`: Generic block (agent, tool, etc.).
--   `Attribute`: Key-value pair.
--   `Expression`: Literal, Reference, Call.
+The Abstract Syntax Tree represents the parsed configuration.
 
-**TypeScript Interface Sketch**:
 ```typescript
+// Root
 interface Program {
+  kind: "Program";
   blocks: Block[];
 }
 
+// Generic Block
 interface Block {
-  type: string; // "agent", "tool"
-  label?: string; // "researcher"
-  attributes: Record<string, Expression>;
-  children: Block[]; // Nested blocks
+  kind: "Block";
+  type: string;       // "agent", "tool", "resource"
+  identifier: string; // "researcher"
+  label?: string;     // Optional secondary label
+  attributes: Attribute[];
+  children: Block[];  // Nested blocks
+}
+
+// Attribute
+interface Attribute {
+  kind: "Attribute";
+  key: string;
+  value: Expression;
+}
+
+// Expressions
+type Expression = 
+  | Literal 
+  | Reference 
+  | ListExpr 
+  | MapExpr;
+
+interface Reference {
+  kind: "Reference";
+  path: string[]; // ["tool", "web_search"]
 }
 ```
 
-## 14. Validation & Static Checks
-The compiler must enforce:
-1.  **Reference Integrity**: All `${...}` references must point to existing blocks.
-2.  **Type Checking**: Input/Output types between connected blocks must match.
-3.  **Cycle Detection**: The execution graph must be acyclic (no infinite loops without explicit exit conditions).
-4.  **Required Attributes**: Ensure mandatory fields (e.g., `model` for `agent`) are present.
+## 7. JSON IR (Intermediate Representation)
+The compiler transpiles A22 code into a portable JSON format for runtimes.
 
-## 15. Error Handling Rules
--   **Parse Errors**: Invalid syntax (line/column reported).
--   **Validation Errors**: Invalid references or types (reported before execution).
--   **Runtime Errors**: Tool failures or agent timeouts. Handled via `error_handler` blocks (optional on agents).
-
-```hcl
-agent "risky_agent" {
-  # ...
-  on_error {
-    retry = 3
-    fallback = agent.safe_mode
+```json
+{
+  "version": "0.1",
+  "graph": {
+    "nodes": {
+      "agent.researcher": {
+        "type": "agent",
+        "model": "gpt-4-turbo",
+        "tools": ["tool.web_search"]
+      },
+      "tool.web_search": {
+        "type": "tool",
+        "source": "std/web_search"
+      }
+    },
+    "edges": [
+      { "from": "router.triage", "to": "agent.researcher" }
+    ]
   }
 }
 ```
-
-## 16. Execution Semantics
-The runtime executes the graph.
--   **Lazy Evaluation**: Blocks are instantiated only when reached.
--   **Concurrency**: Parallel branches in the graph execute concurrently.
--   **Idempotency**: Re-running a graph with the same state and input should yield the same result (assuming deterministic agents/tools).
-
-## 17. Developer Experience Guidelines
--   **LSP**: Language Server Protocol implementation for auto-complete and go-to-definition.
--   **Formatter**: `a22 fmt` to standardize layout.
--   **Visualizer**: `a22 graph` to generate Mermaid or DOT diagrams.
-
-## 18. Reserved Keywords
-`agent`, `tool`, `event`, `route`, `memory`, `graph`, `var`, `module`, `true`, `false`, `null`, `if`, `else`, `for`, `in`.
-
-## 19. Full Examples
-
-### Small: Simple Q&A
-```hcl
-# main.a22
-var "model_name" { default = "gpt-4o" }
-
-agent "assistant" {
-  model = "${var.model_name}"
-  system_prompt = "You are a helpful assistant."
-}
-
-graph "main" {
-  start = agent.assistant
-}
-```
-
-### Medium: RAG System
-```hcl
-# rag.a22
-var "docs_path" { default = "./docs" }
-
-memory "docs_db" {
-  type = "vector"
-  config = { path = "${var.docs_path}" }
-}
-
-tool "retrieve" {
-  source = "./tools/retrieve.ts"
-  inputs { query = string }
-  outputs { context = string }
-}
-
-agent "rag_bot" {
-  model = "gpt-4-turbo"
-  tools = [tool.retrieve]
-  memory = memory.docs_db
-  
-  system_prompt = <<EOF
-  Use the retrieve tool to find context before answering.
-  EOF
-}
-```
-
-### Large: Multi-Agent Research Team
-```hcl
-# research_team.a22
-
-# --- Definitions ---
-
-agent "planner" {
-  model = "o1-preview"
-  system_prompt = "Break down the user request into research tasks."
-  outputs { tasks = list(string) }
-}
-
-agent "researcher" {
-  model = "gpt-4-turbo"
-  tools = [tool.web_search, tool.scrape]
-  inputs { task = string }
-  outputs { findings = string }
-}
-
-agent "editor" {
-  model = "gpt-4-turbo"
-  inputs { 
-    original_request = string
-    all_findings = list(string) 
-  }
-  system_prompt = "Compile findings into a final report."
-}
-
-tool "web_search" { source = "./std/search" }
-tool "scrape" { source = "./std/scrape" }
-
-# --- Orchestration ---
-
-route "dispatch" {
-  input = agent.planner.tasks
-  
-  # Fan-out pattern
-  foreach "task" in input {
-    target = agent.researcher
-    args   = { task = task }
-  }
-  
-  next = agent.editor
-}
-
-graph "research_flow" {
-  start = agent.planner
-  
-  # Explicitly define the flow for clarity, though 'next' in route handles it
-  # agent.planner -> route.dispatch -> agent.researcher (xN) -> agent.editor
-}
-```
-
-## 20. Appendix: Extensions
-Future support for:
--   **Remote State**: Storing memory/state in S3/GCS.
--   **Policy as Code**: Defining guardrails (e.g., "no agent can spend > $10").
