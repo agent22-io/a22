@@ -26,13 +26,14 @@
 14. [Human-in-the-Loop](#14-human-in-the-loop)
 15. [Scheduling](#15-scheduling)
 16. [Standard Library](#16-standard-library)
-17. [Observability](#17-observability)
-18. [Versioning & Migration](#18-versioning--migration)
-19. [Deployment](#19-deployment)
-20. [Testing](#20-testing)
-21. [Runtime Model](#21-runtime-model)
-22. [Complete Examples](#22-complete-examples)
-23. [Syntax Reference](#23-syntax-reference)
+17. [Modules & Registry](#17-modules--registry)
+18. [Observability](#18-observability)
+19. [Versioning & Migration](#19-versioning--migration)
+20. [Deployment](#20-deployment)
+21. [Testing](#21-testing)
+22. [Runtime Model](#22-runtime-model)
+23. [Complete Examples](#23-complete-examples)
+24. [Syntax Reference](#24-syntax-reference)
 
 ---
 
@@ -2043,9 +2044,282 @@ workflow stdlib.reduce
 
 ---
 
-## 17. Observability
+## 17. Modules & Registry
 
-### 17.1 Distributed Tracing
+### 17.1 Module System
+
+A22 supports modular composition through imports:
+
+```a22
+spec_version "1.0"
+
+# Import from standard library
+from stdlib/agents import conversational_agent
+from stdlib/tools import web_search, file_ops
+
+# Import from registry
+from registry/openai/assistants import gpt4_assistant
+from registry/anthropic/tools import claude_tools
+
+# Import from local modules
+from ./agents import custom_agent
+from ./workflows import analysis_workflow
+
+# Import with alias
+from registry/vendor/complex_name as simple_name
+
+# Selective imports
+from stdlib/workflows import (
+	sequential_workflow,
+	parallel_workflow,
+	branching_workflow
+)
+```
+
+### 17.2 Module Declaration
+
+Define reusable modules:
+
+```a22
+module "my_custom_agents"
+	version: "1.0.0"
+	spec_version: "1.0"
+
+	description: "Custom agents for data analysis"
+	author: "Organization Name"
+	license: "Apache-2.0"
+
+	dependencies
+		stdlib: "^1.0"
+		registry/openai/models: "^1.2"
+
+	exports
+		agents
+			data_analyzer
+			report_generator
+
+		workflows
+			analysis_pipeline
+
+		tools
+			custom_parser
+
+	# Module can contain agent/tool/workflow definitions
+	agent "data_analyzer"
+		can analyze, summarize
+		use model: :gpt4
+
+		when data.input
+			-> analyze_data
+
+	workflow "analysis_pipeline"
+		steps
+			parse = .custom_parser
+				data: input.raw_data
+
+			analyze = .data_analyzer
+				data: parse.result
+
+			report = .report_generator
+				analysis: analyze.result
+
+			return report
+```
+
+### 17.3 Registry
+
+A22 registries are vendor-neutral repositories for discovering and sharing components:
+
+```a22
+registry "https://registry.a22.foundation"
+	# Public registry with verified components
+
+registry "https://internal.company.com/a22"
+	# Private organizational registry
+	auth: env.REGISTRY_TOKEN
+
+# Publish to registry
+publish
+	module: ./my_module
+	registry: "https://registry.a22.foundation"
+	visibility: :public
+
+	metadata
+		tags: ["nlp", "analysis", "data"]
+		keywords: ["agent", "workflow", "AI"]
+		category: :data_processing
+
+	verification
+		tests_pass: required
+		security_scan: required
+		spec_compliance: required
+```
+
+### 17.4 Package Metadata
+
+Published packages include rich metadata:
+
+```a22
+package "data_analysis_agents"
+	version: "1.2.5"
+	spec_version: "1.0"
+
+	manifest
+		name: "Data Analysis Agents"
+		description: "Production-ready agents for data analysis workflows"
+		author: "Data Team <data@company.com>"
+		license: "MIT"
+		repository: "https://github.com/company/a22-data-agents"
+		homepage: "https://company.com/a22-agents"
+
+	dependencies
+		stdlib: "^1.0.0"
+		registry/openai/models: "^1.2.0"
+		registry/visualization/charts: "^0.5.0"
+
+	peer_dependencies
+		# Optional but recommended
+		registry/monitoring/traces: "^1.0.0"
+
+	exports
+		agents: [data_analyzer, report_generator]
+		workflows: [analysis_pipeline, batch_processor]
+		tools: [csv_parser, json_transformer]
+		types: [AnalysisResult, DataSchema]
+
+	keywords: ["data", "analysis", "ml", "reporting"]
+	categories: [data_processing, analytics]
+
+	compatibility
+		runtime: ["cloudflare", "aws-lambda", "kubernetes"]
+		providers: ["openai", "anthropic"]
+
+	quality
+		test_coverage: 95%
+		docs_coverage: 100%
+		security_scan: passed
+		performance_benchmarks: included
+```
+
+### 17.5 Semantic Versioning
+
+A22 follows semantic versioning (SemVer 2.0):
+
+```a22
+# Version format: MAJOR.MINOR.PATCH
+
+version "1.2.3"
+	# 1 = Major version (breaking changes)
+	# 2 = Minor version (new features, backward compatible)
+	# 3 = Patch version (bug fixes, backward compatible)
+
+# Version constraints
+dependencies
+	stdlib: "^1.0.0"        # >=1.0.0 <2.0.0
+	toolkit: "~1.2.0"       # >=1.2.0 <1.3.0
+	utils: ">=1.5.0"        # Any version >=1.5.0
+	experimental: "1.0.0"   # Exact version
+
+# Pre-release versions
+version "2.0.0-beta.1"    # Beta release
+version "2.0.0-rc.2"      # Release candidate
+version "2.0.0-alpha.3"   # Alpha release
+
+# Build metadata
+version "1.0.0+20241207"  # Build timestamp
+```
+
+### 17.6 Dependency Resolution
+
+Implementations resolve dependencies deterministically:
+
+```a22
+dependency_resolution
+	strategy: :latest_compatible
+
+	# Lock file (generated automatically)
+	lockfile ".a22.lock"
+		resolved_dependencies
+			stdlib: "1.0.5"
+			openai_models: "1.2.3"
+			anthropic_tools: "0.5.2"
+
+		integrity_hashes
+			stdlib: "sha256:abc123..."
+			openai_models: "sha256:def456..."
+
+	# Dependency conflicts
+	conflict_resolution: :highest_compatible_version
+
+	# Security
+	verify_signatures: true
+	check_vulnerabilities: true
+	trusted_registries: ["https://registry.a22.foundation"]
+```
+
+### 17.7 Private Modules
+
+Support for private organizational modules:
+
+```a22
+# Configure private registry
+registry "https://internal.company.com/a22"
+	auth
+		token: env.COMPANY_REGISTRY_TOKEN
+		type: :bearer
+
+	# Or use SSH keys
+	auth
+		ssh_key: ~/.ssh/a22_registry_key
+		type: :ssh
+
+# Import from private registry
+from registry/company/proprietary import internal_agent
+
+# Mixed public/private dependencies
+dependencies
+	# Public
+	stdlib: "^1.0"
+
+	# Private
+	company/internal_toolkit: "^2.0"
+	company/ml_models: "^1.5"
+```
+
+### 17.8 Module Scoping
+
+Modules have proper scoping and namespacing:
+
+```a22
+# Namespaced imports prevent conflicts
+from registry/vendorA/utils import transform as transform_a
+from registry/vendorB/utils import transform as transform_b
+
+agent "processor"
+	when data.input
+		result_a = transform_a(input.data)
+		result_b = transform_b(input.data)
+
+		-> compare_results
+			a: result_a
+			b: result_b
+
+# Wildcard imports (discouraged, explicit is better)
+from registry/toolkit/* import *  # Imports everything
+
+# Recommended: explicit imports
+from registry/toolkit import (
+	needed_agent,
+	needed_workflow,
+	needed_tool
+)
+```
+
+---
+
+## 18. Observability
+
+### 18.1 Distributed Tracing
 
 Automatic trace generation from events:
 
@@ -2089,7 +2363,7 @@ agent "processor"
 		return result
 ```
 
-### 17.2 Metrics
+### 18.2 Metrics
 
 Auto-generated from events:
 
@@ -2123,7 +2397,7 @@ metrics
 		labels: [currency, product_type]
 ```
 
-### 17.3 Time-Travel Debugging
+### 18.3 Time-Travel Debugging
 
 ```a22
 debug_session
@@ -2158,7 +2432,7 @@ debug_session
 			data: {test_mode: true}
 ```
 
-### 17.4 Logging
+### 18.4 Logging
 
 ```a22
 logging
@@ -2198,9 +2472,9 @@ logging
 
 ---
 
-## 18. Versioning & Migration
+## 19. Versioning & Migration
 
-### 18.1 Specification Version
+### 19.1 Specification Version
 
 ```a22
 spec_version "1.0"
@@ -2214,7 +2488,7 @@ requires
 		anthropic: "^0.5.0"
 ```
 
-### 18.2 Context Migration
+### 19.2 Context Migration
 
 Migrate contexts across versions:
 
@@ -2255,7 +2529,7 @@ migration "0.1_to_1.0"
 		context_size_within: 10% of original
 ```
 
-### 18.3 Backward Compatibility
+### 19.3 Backward Compatibility
 
 ```a22
 # Support old event types
@@ -2283,9 +2557,9 @@ compatibility
 
 ---
 
-## 19. Deployment
+## 20. Deployment
 
-### 19.1 Deployment Package
+### 20.1 Deployment Package
 
 ```a22
 deployment "my_agent_system"
@@ -2330,7 +2604,7 @@ deployment "my_agent_system"
 		retries: 3
 ```
 
-### 19.2 Configuration Management
+### 20.2 Configuration Management
 
 ```a22
 config :development
@@ -2387,7 +2661,7 @@ config :production
 		export_to: ["prometheus", "datadog"]
 ```
 
-### 19.3 Scaling Configuration
+### 20.3 Scaling Configuration
 
 ```a22
 deployment "my_agent_system"
@@ -2423,9 +2697,9 @@ deployment "my_agent_system"
 
 ---
 
-## 20. Testing
+## 21. Testing
 
-### 20.1 Agent Tests
+### 21.1 Agent Tests
 
 ```a22
 test "agent responds to greeting"
@@ -2461,7 +2735,7 @@ test "agent uses tools correctly"
 		completes within 30s
 ```
 
-### 20.2 Workflow Tests
+### 21.2 Workflow Tests
 
 ```a22
 test "research workflow succeeds"
@@ -2508,7 +2782,7 @@ test "workflow handles errors gracefully"
 		workflow.completed with fallback_result
 ```
 
-### 20.3 Integration Tests
+### 21.3 Integration Tests
 
 ```a22
 test "multi-agent collaboration"
@@ -2555,7 +2829,7 @@ test "end-to-end user interaction"
 			completes within 10s
 ```
 
-### 20.4 Property-Based Tests
+### 21.4 Property-Based Tests
 
 ```a22
 test "projection consistency"
@@ -2587,9 +2861,9 @@ test "determinism guarantee"
 
 ---
 
-## 21. Runtime Model
+## 22. Runtime Model
 
-### 21.1 Event Loop
+### 22.1 Event Loop
 
 ```
 loop:
@@ -2602,7 +2876,7 @@ loop:
   7. Emit metrics/traces
 ```
 
-### 21.2 Pure Function Semantics
+### 22.2 Pure Function Semantics
 
 ```
 # Agents
@@ -2621,7 +2895,7 @@ tool(input) -> event
   and event is deterministic for given input
 ```
 
-### 21.3 Context Evolution
+### 22.3 Context Evolution
 
 ```
 context_0 = []
@@ -2633,7 +2907,7 @@ context_3 = context_2 + [agent.output]
 state_t = projection(context_t)
 ```
 
-### 21.4 Execution Guarantees
+### 22.4 Execution Guarantees
 
 1. **Determinism**: Same context + same input → same event
 2. **Immutability**: Events never change after creation
@@ -2644,9 +2918,9 @@ state_t = projection(context_t)
 
 ---
 
-## 22. Complete Examples
+## 23. Complete Examples
 
-### 22.1 Simple Chatbot
+### 23.1 Simple Chatbot
 
 ```a22
 spec_version "1.0"
@@ -2679,7 +2953,7 @@ test "chatbot responds"
 		output contains greeting
 ```
 
-### 22.2 Research Assistant
+### 23.2 Research Assistant
 
 ```a22
 spec_version "1.0"
@@ -2747,7 +3021,7 @@ workflow "research_workflow"
 		return analysis
 ```
 
-### 22.3 Multi-Agent System
+### 23.3 Multi-Agent System
 
 ```a22
 spec_version "1.0"
@@ -2811,7 +3085,7 @@ agent "editor"
 	use model: :gpt4
 ```
 
-### 22.4 Production System with Full Features
+### 23.4 Production System with Full Features
 
 ```a22
 spec_version "1.0"
@@ -3023,9 +3297,9 @@ test "production workflow succeeds"
 
 ---
 
-## 23. Syntax Reference
+## 24. Syntax Reference
 
-### 23.1 Keywords
+### 24.1 Keywords
 
 ```
 # Top-level
@@ -3042,7 +3316,7 @@ from, as
 given, expect
 ```
 
-### 23.2 Symbols and References
+### 24.2 Symbols and References
 
 ```
 :name          # Symbol (provider, model, capability)
@@ -3051,7 +3325,7 @@ given, expect
 ..             # Range operator (5..10)
 ```
 
-### 23.3 Operators
+### 24.3 Operators
 
 ```
 # Comparison
@@ -3067,7 +3341,7 @@ and, or, not
 in, not in, contains
 ```
 
-### 23.4 Data Types
+### 24.4 Data Types
 
 ```
 # Primitives
@@ -3080,7 +3354,7 @@ list<T>, map<K,V>, set<T>, optional<T>
 any, never
 ```
 
-### 23.5 Duration Format
+### 24.5 Duration Format
 
 ```
 5s      # 5 seconds
@@ -3090,7 +3364,7 @@ any, never
 1w      # 1 week
 ```
 
-### 23.6 Size Format
+### 24.6 Size Format
 
 ```
 256kb   # Kilobytes
