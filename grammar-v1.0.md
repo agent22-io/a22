@@ -39,7 +39,9 @@
 KEYWORD      ::= 'agent' | 'tool' | 'workflow' | 'policy' | 'provider' | 'capability'
                | 'can' | 'use' | 'do' | 'has' | 'is' | 'when' | 'needs' | 'where'
                | 'steps' | 'parallel' | 'branch' | 'loop' | 'break' | 'continue' | 'return'
-               | 'import' | 'from' | 'as' | 'export'
+               | 'import' | 'from' | 'as' | 'export' | 'exports'
+               | 'module' | 'package' | 'registry' | 'publish' | 'manifest'
+               | 'version' | 'lockfile' | 'peer_dependencies'
                | 'test' | 'given' | 'expect'
                | 'schedule' | 'every' | 'at' | 'in' | 'run' | 'with'
                | 'human_in_loop' | 'show' | 'ask' | 'options'
@@ -1247,16 +1249,148 @@ assertion    ::= 'assert' assertion_expr
 
 ## 19. Imports & Exports
 
+### Import Statements
+
 ```ebnf
-import_decl  ::= 'import' NEWLINE INDENT import_items DEDENT
-               | 'import' 'from' STRING
+import_decl  ::= 'from' import_path 'import' import_list
+               | 'from' import_path 'import' IDENT 'as' IDENT
 
-import_items ::= (import_item NEWLINE)*
+import_path  ::= path_segment ('/' path_segment)*
 
-import_item  ::= import_type STRING ('as' STRING)?
-               | import_type STRING 'from' STRING
+path_segment ::= IDENT | 'stdlib' | 'registry' | '..'  | '.'
 
-import_type  ::= 'agent' | 'tool' | 'workflow' | 'policy' | 'type' | 'capability'
+import_list  ::= IDENT (',' IDENT)*
+               | OPEN_PAREN NEWLINE INDENT (IDENT NEWLINE)+ DEDENT CLOSE_PAREN
+```
+
+### Module Declaration
+
+```ebnf
+module_decl  ::= 'module' STRING NEWLINE INDENT module_body DEDENT
+
+module_body  ::= (module_stmt NEWLINE)*
+
+module_stmt  ::= 'version' COLON STRING
+               | 'spec_version' COLON STRING
+               | 'description' COLON STRING
+               | 'author' COLON STRING
+               | 'license' COLON STRING
+               | dependencies_block
+               | exports_block
+               | (agent_decl | tool_decl | workflow_decl | type_decl)
+
+exports_block ::= 'exports' NEWLINE INDENT export_items DEDENT
+
+export_items ::= (export_item NEWLINE)*
+
+export_item  ::= export_type NEWLINE INDENT IDENT (NEWLINE IDENT)* DEDENT
+
+export_type  ::= 'agents' | 'tools' | 'workflows' | 'types' | 'policies'
+```
+
+### Package Declaration
+
+```ebnf
+package_decl ::= 'package' STRING NEWLINE INDENT package_body DEDENT
+
+package_body ::= (package_stmt NEWLINE)*
+
+package_stmt ::= 'version' COLON STRING
+               | 'spec_version' COLON STRING
+               | manifest_block
+               | dependencies_block
+               | peer_dependencies_block
+               | exports_block
+               | 'keywords' COLON list
+               | 'categories' COLON list
+               | compatibility_block
+               | quality_block
+
+manifest_block ::= 'manifest' NEWLINE INDENT manifest_items DEDENT
+
+manifest_items ::= (manifest_item NEWLINE)*
+
+manifest_item ::= 'name' COLON STRING
+                | 'description' COLON STRING
+                | 'author' COLON STRING
+                | 'license' COLON STRING
+                | 'repository' COLON STRING
+                | 'homepage' COLON STRING
+
+peer_dependencies_block ::= 'peer_dependencies' NEWLINE INDENT dep_items DEDENT
+
+compatibility_block ::= 'compatibility' NEWLINE INDENT compat_items DEDENT
+
+compat_items ::= (compat_item NEWLINE)*
+
+compat_item  ::= 'runtime' COLON list
+               | 'providers' COLON list
+
+quality_block ::= 'quality' NEWLINE INDENT quality_items DEDENT
+
+quality_items ::= (quality_item NEWLINE)*
+
+quality_item ::= IDENT COLON (NUMBER '%' | STRING)
+```
+
+### Registry Declaration
+
+```ebnf
+registry_decl ::= 'registry' STRING (NEWLINE INDENT registry_body DEDENT)?
+
+registry_body ::= (registry_stmt NEWLINE)*
+
+registry_stmt ::= 'auth' COLON (IDENT | NEWLINE INDENT auth_items DEDENT)
+
+auth_items   ::= (auth_item NEWLINE)*
+
+auth_item    ::= 'token' COLON expr
+               | 'type' COLON SYMBOL
+               | 'ssh_key' COLON STRING
+```
+
+### Publish Statement
+
+```ebnf
+publish_stmt ::= 'publish' NEWLINE INDENT publish_body DEDENT
+
+publish_body ::= (publish_item NEWLINE)*
+
+publish_item ::= 'module' COLON STRING
+               | 'registry' COLON STRING
+               | 'visibility' COLON SYMBOL
+               | metadata_block
+               | verification_block
+
+verification_block ::= 'verification' NEWLINE INDENT verif_items DEDENT
+
+verif_items  ::= (verif_item NEWLINE)*
+
+verif_item   ::= IDENT COLON (SYMBOL | BOOLEAN)
+```
+
+### Dependency Resolution
+
+```ebnf
+dependencies_block ::= 'dependencies' NEWLINE INDENT dep_items DEDENT
+
+dep_items    ::= (dep_item NEWLINE)*
+
+dep_item     ::= IDENT COLON STRING
+               | dep_group NEWLINE INDENT dep_items DEDENT
+
+dep_group    ::= 'stdlib' | 'providers' | IDENT
+
+lockfile_block ::= 'lockfile' STRING NEWLINE INDENT lock_items DEDENT
+
+lock_items   ::= (lock_item NEWLINE)*
+
+lock_item    ::= 'resolved_dependencies' NEWLINE INDENT resolved_deps DEDENT
+               | 'integrity_hashes' NEWLINE INDENT hash_items DEDENT
+
+resolved_deps ::= (IDENT COLON STRING NEWLINE)*
+
+hash_items   ::= (IDENT COLON STRING NEWLINE)*
 ```
 
 ### Migration
